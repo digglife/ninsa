@@ -89,7 +89,7 @@ class NintendoSearcher:
             if not set(hardwares) <= set(HARDWARES.keys()):
                 raise
         else:
-            hardwares = HARDWARES.keys
+            hardwares = HARDWARES.keys()
 
         if self.mediatype:
             mediatypes = self.mediatype.split(',')
