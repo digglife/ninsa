@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import requests
 import re
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as et
+from bs4 import BeautifulSoup
 
 
 BASE_URL = 'http://search1.nintendo.co.jp/search/softwareXml.php'
@@ -9,7 +10,7 @@ BASE_URL = 'http://search1.nintendo.co.jp/search/softwareXml.php'
 # Array in the order from http://www.nintendo.co.jp
 HARDWARE_URL = ['wiiU_all', 'wiiU', 'wiiU_dl',
                 'wii_all', 'wii', 'wiiWare', 'wiiVc',
-                '3ds_all', '3ds', '3dsDl', '3dsVc'
+                '3ds_all', '3ds', '3dsDl', '3dsVc',
                 'ds_all', 'ds', 'dsiWare', 'wiiU_Vc']
 
 HARDWARES = {
@@ -50,14 +51,30 @@ class NintendoSearcher:
         self._count = 0
         self._total = 0
 
-    def get_games(self):
-        pass
-
     def _request(self):
         params = self._get_params()
         r = requests.get(BASE_URL, params=params)
         r.encoding = 'utf8'
         return r.text
+
+    def get_games(self):
+        xml = self._request()
+        root = et.fromstring(xml.encode('utf8'))
+        total = int(root[0].text)
+        if total == 0:
+            return
+        titles = []
+        for e in root[1]:
+            title = {}
+            for attrib in e:
+                if attrib.tag == 'Detail':
+                    title.update(self._parse_details(attrib.text))
+                    continue
+                title[attrib.tag] = attrib.text
+            titles.append(title)
+        self._count = titles[-1]['Row']
+        self._page += self._page
+        return titles
 
     def _get_params(self):
         params = {}
@@ -117,7 +134,8 @@ class NintendoSearcher:
 
     @staticmethod
     def _format_price(price):
-        if price is None: return
+        if price is None:
+            return
         price = int(price)
 
         if price <= 500:
@@ -131,34 +149,26 @@ class NintendoSearcher:
     def _date_to_index(date):
         # 2004-01 : 0
         # 2004-12 : 1
-        # 2005-01 : 2
-        # 2005-06 : 3
-        # 2005-07 : 4
-        # 2005-12 : 5
+        # 2005-01 : 1
+        # 2005-06 : 2
+        # 2005-07 : 2
+        # 2005-12 : 3
+        # 2006-01 : 3
+        # 2006-06 : 4
+        # 2006-07 : 4
+        # 2006-12 : 5
         # ......
         """
-
         Now only able to parse yyyymm defined on the webpage of Nintendo site.
         Need to figure out a way to handle nature months besides 1,6,7,12
-        It's not so obvious because the way to handle start_date and end_date 
-        is different. For Example:
-
-        201003
-        if it's a start_date, the index should be set as 201001
-        if it's a end_date, the index should be 201006
-
-        Notes:
-        I can ignore the search parameters, just filter the results with date.
-
         """
         if date is None:
             return
         index = 0
-
         m = re.match('^(\d{4})-?(\d{2})$', date)
         if m is None:
             return
-        [year, month] = [int(i) for x in m.groups()]
+        [year, month] = [int(i) for i in m.groups()]
 
         if year < 2004:
             return
@@ -170,16 +180,43 @@ class NintendoSearcher:
             else:
                 return
         else:
-            year_offset = year - 2004
+            year_offset = year - 2005
             if month == 1:
-                index = 2 + (year_offset - 1) * 4
-            elif month == 6:
-                index = 3 + (year_offset - 1) * 4
-            elif month == 7:
-                index = 4 + (year_offset - 1) * 4
+                index = 1 + 2 * year_offset
+            elif month == 6 or month == 7:
+                index = 2 + 2 * year_offset
             elif month == 12:
-                index = 5 + (year_offset - 1) * 4
+                index = 3 + 2 *  year_offset
             else:
                 return
 
         return index
+
+    @staticmethod
+    def trans_hardid(id):
+        hardid = ['3ds', 'ds', 'ds', 'wii', 'wiiu', 'etc', 'amibo']
+        return hardid[id+1]
+
+    @staticmethod
+    def trans_mediatype(id):
+        mediatypes = ['package', 'download', 'package/download', 'vc']
+        return mediatypes[id+1]
+
+    @staticmethod
+    def _parse_details(details):
+        html = BeautifulSoup(details)
+        spans = html.find_all('span')
+        detail = {}
+        for s in spans:
+            c = s.get('class')[0]
+            if c == 'softinfo__date':
+                #detail['Date'] = re.search('([\d\.]+)', s.text).group().encode('utf-8')
+                detail['Date'] = s.text
+            elif c == 'softinfo__price':
+                #detail['Price'] = re.search('([\d,]+)', s.text).group().encode('utf-8')
+                detail['Price'] = s.text
+            elif c == 'softinfo__maker':
+                detail['Maker'] = s.text
+            else:
+                pass
+        return detail
