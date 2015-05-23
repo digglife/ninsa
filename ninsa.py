@@ -28,10 +28,12 @@ GENRES = ['action', 'adventure', 'sports', 'simulation',
 
 
 class NintendoSearcher:
-    # todo: implement getter and setter
+    """NintendoSearcher Main Class:
 
-    # search(keyword, hardware='3ds', mediatype='dl', option='nintendo',
-    #    genre='action', price='500', startdate='201502',enddate='201601')
+    NintendoSearcher(keyword, hardware='3ds', mediatype='dl', option='nintendo',
+        genre='action', price='500', startdate='201502',enddate='201601')
+
+    """
 
     def __init__(self, query, hardware=None, mediatype=None, genre=None,
                  price=None, trial=False, campaign=False, nintendo=False,
@@ -48,8 +50,11 @@ class NintendoSearcher:
         self.startdate = startdate
         self.enddate = enddate
         self._page = 1
-        self._count = 0
         self._total = 0
+
+    def get_games(self):
+        while self._page != 0:
+            yield self._get_items()
 
     def _request(self):
         params = self._get_params()
@@ -57,12 +62,12 @@ class NintendoSearcher:
         r.encoding = 'utf8'
         return r.text
 
-    def get_games(self):
+    def _get_items(self):
         xml = self._request()
         root = et.fromstring(xml.encode('utf8'))
-        total = int(root[0].text)
-        if total == 0:
-            return
+        self._total = int(root[0].text)
+        if self._total == 0:
+            return []
         titles = []
         for e in root[1]:
             title = {}
@@ -72,8 +77,10 @@ class NintendoSearcher:
                     continue
                 title[attrib.tag] = attrib.text
             titles.append(title)
-        self._count = titles[-1]['Row']
-        self._page += self._page
+        count = titles[-1]['Row']
+        self._page += 1
+        if int(count) == self._total:
+            self._page = 0
         return titles
 
     def _get_params(self):
@@ -88,6 +95,7 @@ class NintendoSearcher:
         params['price'] = self._format_price(self.price)
         params['release[start]'] = self._date_to_index(self.startdate)
         params['release[end]'] = self._date_to_index(self.enddate)
+        params['page'] = self._page
         if self.trial:
             params['trial'] = 1
         if self.campaign:
@@ -186,7 +194,7 @@ class NintendoSearcher:
             elif month == 6 or month == 7:
                 index = 2 + 2 * year_offset
             elif month == 12:
-                index = 3 + 2 *  year_offset
+                index = 3 + 2 * year_offset
             else:
                 return
 
@@ -195,12 +203,12 @@ class NintendoSearcher:
     @staticmethod
     def trans_hardid(id):
         hardid = ['3ds', 'ds', 'ds', 'wii', 'wiiu', 'etc', 'amibo']
-        return hardid[id+1]
+        return hardid[id-1]
 
     @staticmethod
     def trans_mediatype(id):
         mediatypes = ['package', 'download', 'package/download', 'vc']
-        return mediatypes[id+1]
+        return mediatypes[id-1]
 
     @staticmethod
     def _parse_details(details):
